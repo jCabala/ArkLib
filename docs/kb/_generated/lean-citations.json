@@ -1,8 +1,8 @@
 {
   "counts": {
-    "files_with_citations": 74,
+    "files_with_citations": 75,
     "keys_cited": 25,
-    "total_citation_edges": 104
+    "total_citation_edges": 106
   },
   "files": {
     "ArkLib/AGM/Basic.lean": [
@@ -172,6 +172,10 @@
     "ArkLib/Data/Lattices/CyclotomicRing/NormBounds/Basic.lean": [
       "NOZ26",
       "NS24"
+    ],
+    "ArkLib/Data/Lattices/CyclotomicRing/NormBounds/LsCore.lean": [
+      "LS18",
+      "NOZ26"
     ],
     "ArkLib/Data/Lattices/CyclotomicRing/NormBounds/LyubashevskySeiler.lean": [
       "LS18",
@@ -362,6 +366,7 @@
       "ArkLib/CommitmentScheme/Ajtai/InnerOuter/Arithmetic.lean",
       "ArkLib/CommitmentScheme/Ajtai/InnerOuter/Scheme.lean",
       "ArkLib/CommitmentScheme/Ajtai/InnerOuter/Security.lean",
+      "ArkLib/Data/Lattices/CyclotomicRing/NormBounds/LsCore.lean",
       "ArkLib/Data/Lattices/CyclotomicRing/NormBounds/LyubashevskySeiler.lean",
       "ArkLib/Data/Lattices/CyclotomicRing/NormBounds.lean"
     ],
@@ -379,6 +384,7 @@
       "ArkLib/CommitmentScheme/Ajtai/InnerOuter.lean",
       "ArkLib/Data/Lattices/CyclotomicRing/Modulus.lean",
       "ArkLib/Data/Lattices/CyclotomicRing/NormBounds/Basic.lean",
+      "ArkLib/Data/Lattices/CyclotomicRing/NormBounds/LsCore.lean",
       "ArkLib/Data/Lattices/CyclotomicRing/NormBounds/LyubashevskySeiler.lean",
       "ArkLib/Data/Lattices/CyclotomicRing/NormBounds/MicciancioYoung.lean",
       "ArkLib/Data/Lattices/CyclotomicRing/NormBounds.lean",
