@@ -15,16 +15,26 @@ Protocol-shaped bad-event and state-invariant lemmas used by the public LogUp so
 open scoped NNReal BigOperators
 
 namespace Logup
-
 section Soundness
-
 variable {ι : Type} (oSpec : OracleSpec ι)
 variable (F : Type) [Field F] [Fintype F] [DecidableEq F] [SampleableType F]
 variable (n M : ℕ)
 variable (params : ProtocolParams M)
 variable {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp))
+local macro "solveEarlierTranscriptCast" : tactic => `(tactic|
+  (unfold ProtocolSpec.Transcript.concat Fin.snoc
+   split
+   · exact cast_eq_iff_heq.mpr (by congr 1)
+   · rename_i hlt
+     norm_num at hlt))
 
-set_option linter.unusedDecidableInType false in
+local macro "solveLastTranscriptCast" : tactic => `(tactic|
+  (unfold ProtocolSpec.Transcript.concat Fin.snoc
+   split
+   · rename_i hlt
+     norm_num at hlt
+   · exact cast_eq_iff_heq.mpr HEq.rfl))
+omit [DecidableEq F] in
 /-- Union bound over the `K` domain-identity MLEs: the chance that any nonzero one vanishes at
 the sampled `z` is at most `K * n / |F|`. -/
 theorem domainIdentityMLE_exists_bad_z_prob_le
@@ -42,6 +52,7 @@ theorem domainIdentityMLE_exists_bad_z_prob_le
                 helpers xChallenge k) = 0 | $ᵗ (Fin n → F)] ≤
       (K : ENNReal) * ((n : ENNReal) / (Fintype.card F : ENNReal)) := by
   classical
+  let _ : DecidableEq F := Classical.decEq F
   let P : Fin K → MvPolynomial (Fin n) F :=
     fun k => domainIdentityMLE (F := F) (n := n) (M := M) groups table columns multiplicity
       helpers xChallenge k
@@ -249,7 +260,7 @@ theorem logupOuterSumcheckClaim_ne_zero_of_good_challenges
     MvPolynomial.toEvalsZeroOne (oStmt .multiplicity).1
   let helpers : Fin params.numGroups → (Fin n → Fin 2) → F :=
     fun k => MvPolynomial.toEvalsZeroOne (oStmt .helpers k).1
-  letI : DecidableEq F := Classical.decEq F
+  let _ : DecidableEq F := Classical.decEq F
   have hlinear :=
     outer_linear_claim_ne_zero_of_good_challenges
       (F := F) (n := n) (M := M) (K := params.numGroups) (params.group)
@@ -307,7 +318,7 @@ private noncomputable def outerBadBatch
               multiplicity helpers x k) =
     0
 
-set_option linter.unusedDecidableInType false in
+omit [DecidableEq F] in
 /-- Probability bound for bad batching scalars once the linear equation is nontrivial.
 
 This packages the generic random-linear-batch bound for the concrete constant term and coefficients
@@ -334,6 +345,8 @@ private theorem outerBadBatch_prob_le
         outerBadBatch (F := F) (n := n) (M := M) (params := params)
           groups table columns multiplicity helpers x z lam | $ᵗ (Fin params.numGroups → F)] ≤
       ((1 : ℕ) : ENNReal) / (Fintype.card F : ENNReal) := by
+  classical
+  let _ : DecidableEq F := Classical.decEq F
   simpa [outerBadBatch] using
     hBatch params.numGroups
       (∑ u : Fin n → Fin 2, ∑ k : Fin params.numGroups, helpers k u)
@@ -343,7 +356,7 @@ private theorem outerBadBatch_prob_le
             multiplicity helpers x k))
       hNontriv
 
-set_option linter.unusedDecidableInType false in
+omit [DecidableEq F] in
 /-- Conditional batching bound after ruling out bad `z`.
 
 If `x` is good and `z` does not hide any nonzero domain-identity MLE, then the deterministic LogUp
@@ -373,6 +386,7 @@ private theorem outerBadBatch_given_good_z_prob_le [Inhabited F]
         $ᵗ (BatchingChallenge F n params.numGroups)] ≤
       ((1 : ℕ) : ENNReal) / (Fintype.card F : ENNReal) := by
   classical
+  let _ : DecidableEq F := Classical.decEq F
   change
     Pr[fun batch : (Fin n → F) × (Fin params.numGroups → F) =>
         ¬ outerBadZ (F := F) (n := n) (M := M) (params := params)
@@ -436,7 +450,7 @@ private theorem outerBadBatch_given_good_z_prob_le [Inhabited F]
     simpa [Function.comp_def, hzBad] using hLam
 
 
-set_option linter.unusedDecidableInType false in
+omit [DecidableEq F] in
 /-- Joint bound for the sampled pair `(z, lambda)` in the outer phase.
 
 The event splits into a bad `z` event, bounded by a union bound over group MLEs, and a bad batching
@@ -466,6 +480,7 @@ private theorem outerBatchChallenge_bad_prob_le [Inhabited F]
       ((params.numGroups : ENNReal) * ((n : ENNReal) / (Fintype.card F : ENNReal))) +
         ((1 : ℕ) : ENNReal) / (Fintype.card F : ENNReal) := by
   classical
+  let _ : DecidableEq F := Classical.decEq F
   let badZ : (Fin n → F) → Prop :=
     outerBadZ (F := F) (n := n) (M := M) (params := params)
       groups table columns multiplicity helpers x
@@ -483,17 +498,25 @@ private theorem outerBatchChallenge_bad_prob_le [Inhabited F]
     exact congrArg
       (fun d : SPMF (Fin n → F) =>
         d.run.toOuterMeasure (some '' {x | badZ x}))
-      (evalDist_map_fst_uniformSample_prod
+      (evalSPMF_map_fst_uniformSample_prod
         (α := Fin n → F) (β := Fin params.numGroups → F))
   have hZ :
       Pr[fun batch : BatchingChallenge F n params.numGroups => badZ batch.1 |
           $ᵗ (BatchingChallenge F n params.numGroups)] ≤
         (params.numGroups : ENNReal) * ((n : ENNReal) / (Fintype.card F : ENNReal)) := by
     rw [hZMarginal]
-    simpa [badZ, outerBadZ] using
-      domainIdentityMLE_exists_bad_z_prob_le
-        (F := F) (n := n) (M := M) (K := params.numGroups)
-        groups table columns multiplicity helpers x
+    change
+      Pr[fun z : Fin n → F =>
+          ∃ k : Fin params.numGroups,
+            domainIdentityMLE (F := F) (n := n) (M := M) groups table columns
+                multiplicity helpers x k ≠ 0 ∧
+              MvPolynomial.eval z
+                (domainIdentityMLE (F := F) (n := n) (M := M) groups table columns
+                  multiplicity helpers x k) = 0 | $ᵗ (Fin n → F)] ≤
+        (params.numGroups : ENNReal) * ((n : ENNReal) / (Fintype.card F : ENNReal))
+    exact domainIdentityMLE_exists_bad_z_prob_le
+      (F := F) (n := n) (M := M) (K := params.numGroups)
+      groups table columns multiplicity helpers x
   have hLam :
       Pr[fun batch : BatchingChallenge F n params.numGroups =>
           ¬ badZ batch.1 ∧ badBatch batch.1 batch.2 |
@@ -721,7 +744,7 @@ private theorem outerSoundnessState_full_not_lang
   rcases hlang with ⟨w, hmid⟩
   cases w
   unfold logupMidRelation at hmid
-  simp only [Set.mem_setOf_eq] at hmid
+  simp only [Set.mem_ofPred_eq] at hmid
   have hne :
       logupOuterSumcheckClaim F n M params
         { xChallenge := x, zChallenge := batch.1, batchingScalars := batch.2 }
@@ -784,13 +807,31 @@ private theorem outerSoundnessState_next
     (msg : (outerPSpec F n params).«Type» m) :
     ¬ outerSoundnessState (F := F) (n := n) (M := M) (params := params)
         stmtPair m.succ (tr.concat msg) := by
-  fin_cases m <;> simp at hDir
+  have hm : m = (0 : Fin 4) ∨ m = (2 : Fin 4) := by
+    fin_cases m
+    · exact Or.inl rfl
+    · exfalso
+      change Direction.V_to_P = Direction.P_to_V at hDir
+      contradiction
+    · exact Or.inr rfl
+    · exfalso
+      change Direction.V_to_P = Direction.P_to_V at hDir
+      contradiction
+  rcases hm with rfl | rfl
   · simpa [outerSoundnessState] using hfalse
-  · contradiction
-  · simpa [outerSoundnessState, outerTranscriptMultiplicityAt2, outerTranscriptMultiplicityAt3,
-      outerTranscriptXAt2, outerTranscriptXAt3, ProtocolSpec.Transcript.concat, Fin.snoc]
-      using hfalse
-  · contradiction
+  · have hmult :
+        outerTranscriptMultiplicityAt3 (F := F) (n := n) (M := M) (params := params)
+            (tr.concat msg) =
+          outerTranscriptMultiplicityAt2 (F := F) (n := n) (M := M) (params := params) tr := by
+      unfold outerTranscriptMultiplicityAt2 outerTranscriptMultiplicityAt3
+      solveEarlierTranscriptCast
+    have hx :
+        outerTranscriptXAt3 (F := F) (n := n) (M := M) (params := params)
+            (tr.concat msg) =
+          outerTranscriptXAt2 (F := F) (n := n) (M := M) (params := params) tr := by
+      unfold outerTranscriptXAt2 outerTranscriptXAt3
+      solveEarlierTranscriptCast
+    simpa [outerSoundnessState, hmult, hx] using hfalse
 
 end
 
@@ -835,19 +876,18 @@ private theorem outerSoundnessState_full_prob_zero
           OptionT (OracleComp oSpec)
               (StmtAfterOuter F n M params ×
                 (∀ i, OStmtAfterOuter F n M params i))) := by
-    rw [← (OracleVerifier.run_eq_run_verifier
-      (stmt := stmtPair.1) (oStmt := stmtPair.2) (transcript := tr)
-      (verifier := outerVerifier oSpec F n M params))]
-    unfold OracleVerifier.run
+    change ((outerVerifier oSpec F n M params).toVerifier).verify stmtPair tr = _
+    unfold OracleVerifier.toVerifier
     simp only
-    rw [outerVerify_simulateQ_eq
-      (oSpec := oSpec) (F := F) (n := n) (M := M) (params := params)
-      stmtPair.1 stmtPair.2
-      (ProtocolSpec.FullTranscript.messages tr)
-      (ProtocolSpec.FullTranscript.challenges tr)]
+    have hVerifyRun := congrArg OptionT.run
+      (outerVerify_simulateQ_eq (oSpec := oSpec) (F := F) (n := n) (M := M)
+        (params := params) stmtPair.1 stmtPair.2 tr.messages tr.challenges)
+    change simulateQ (OracleInterface.simOracle2 oSpec stmtPair.2 tr.messages)
+      ((outerVerifier oSpec F n M params).verify stmtPair.1 tr.challenges).run = _ at hVerifyRun
+    simp only [OptionT.run_pure] at hVerifyRun
+    rw [hVerifyRun]
     simp only [OStmtAfterOuter, OStmtIn, MultiplicityMessage, HelperMessages,
-      ProtocolSpec.MessageIdx, Nat.reduceAdd, Fin.vcons_fin_zero, BatchingChallenge,
-      ProtocolSpec.Message, bind_pure_comp, map_pure]
+      map_pure, Option.map_some]
     congr
     funext i
     cases i <;> rfl
@@ -951,24 +991,27 @@ end
 /-- Protocol-level bridge for the outer phase: the local algebraic ingredients above imply the
 conservative scan-free outer soundness bound used by `logupOuterSoundnessError`. -/
 theorem logup_outer_soundness_from_local_algebra
-    (_hcard : Fintype.card (Fin n → Fin 2) < Fintype.card F)
+    (hcard : Fintype.card (Fin n → Fin 2) < Fintype.card F)
     (hClearedNonzero :
-      ∀ (stmt : StmtIn F n M) (oStmt : ∀ i, OStmtIn F n M i)
+      Fintype.card (Fin n → Fin 2) < Fintype.card F →
+        ∀ (stmt : StmtIn F n M) (oStmt : ∀ i, OStmtIn F n M i)
         (multiplicity : (Fin n → Fin 2) → F),
         ((stmt, oStmt), ()) ∉ inputRelation F n M →
           clearedLookupIdentity
               (MvPolynomial.toEvalsZeroOne (oStmt .table).1)
               (fun i => MvPolynomial.toEvalsZeroOne (oStmt (.column i)).1)
               multiplicity ≠ 0)
-    (_hClearedDegree :
+    (hClearedDegree :
       ∀ (table : (Fin n → Fin 2) → F) (columns : Fin M → (Fin n → Fin 2) → F)
         (multiplicity : (Fin n → Fin 2) → F),
         (clearedLookupIdentity table columns multiplicity).natDegree ≤
           (M + 1) * Fintype.card (Fin n → Fin 2) - 1)
-    (_hBadRoots :
+    (hBadRoots :
       ∀ (table : (Fin n → Fin 2) → F) (columns : Fin M → (Fin n → Fin 2) → F)
         (multiplicity : (Fin n → Fin 2) → F),
         clearedLookupIdentity table columns multiplicity ≠ 0 →
+          (clearedLookupIdentity table columns multiplicity).natDegree ≤
+            (M + 1) * Fintype.card (Fin n → Fin 2) - 1 →
           (Finset.univ.filter fun x : F =>
             (∀ u : Fin n → Fin 2, x + table u ≠ 0) ∧
               Polynomial.eval x (clearedLookupIdentity table columns multiplicity) = 0).card ≤
@@ -1032,10 +1075,27 @@ theorem logup_outer_soundness_from_local_algebra
                   (outerTranscriptMultiplicity (F := F) (n := n) (M := M)
                     (params := params) p.1).1)
                 p.2 := by
-          simpa [BadXPair, outerSoundnessStateFunction, outerSoundnessState,
-            outerChallengeXIdx, outerTranscriptMultiplicity, outerTranscriptMultiplicityAt2,
-            outerTranscriptXAt2, ProtocolSpec.Transcript.concat, Fin.snoc, table, columns]
-            using htrue
+          let tr2 : (outerPSpec F n params).Transcript (2 : Fin 5) :=
+            ProtocolSpec.Transcript.concat (pSpec := outerPSpec F n params)
+              (m := (1 : Fin 4)) p.2 p.1
+          have htrueNorm :
+              outerSoundnessState (F := F) (n := n) (M := M) (params := params)
+                stmtPair (2 : Fin 5) tr2 := by
+            simpa [tr2, outerSoundnessStateFunction, outerChallengeXIdx] using htrue
+          have hmult :
+              outerTranscriptMultiplicityAt2 (F := F) (n := n) (M := M) (params := params)
+                  tr2 =
+                outerTranscriptMultiplicity (F := F) (n := n) (M := M)
+                  (params := params) p.1 := by
+            unfold outerTranscriptMultiplicityAt2 outerTranscriptMultiplicity
+              tr2
+            solveEarlierTranscriptCast
+          have hx :
+              outerTranscriptXAt2 (F := F) (n := n) (M := M) (params := params)
+                  tr2 = p.2 := by
+            unfold outerTranscriptXAt2 tr2
+            solveLastTranscriptCast
+          simpa [outerSoundnessState, hmult, hx, table, columns] using htrueNorm
         exact htrue'.resolve_left hnotLang'
       · refine probEvent_bind_le_of_forall_le ?_
         intro s _hs
@@ -1055,7 +1115,7 @@ theorem logup_outer_soundness_from_local_algebra
                   (outerTranscriptMultiplicity (F := F) (n := n) (M := M)
                     (params := params) tr).1) ≠ 0 := by
           simpa [table, columns] using
-            hClearedNonzero stmtPair.1 stmtPair.2
+            hClearedNonzero hcard stmtPair.1 stmtPair.2
               (MvPolynomial.toEvalsZeroOne
                 (outerTranscriptMultiplicity (F := F) (n := n) (M := M)
                   (params := params) tr).1)
@@ -1063,13 +1123,43 @@ theorem logup_outer_soundness_from_local_algebra
         have hUniform :
             Pr[fun x : F => BadXPair (tr, x) | $ᵗ F] ≤
               (xErr : ENNReal) := by
-          simpa [BadXPair, outerBadX, xErr, table, columns] using
-            clearedLookupIdentity_bad_x_prob_le
-              (F := F) (n := n) (M := M) table columns
-              (MvPolynomial.toEvalsZeroOne
-                (outerTranscriptMultiplicity (F := F) (n := n) (M := M)
-                  (params := params) tr).1)
-              hpoly
+          let multiplicity :=
+            MvPolynomial.toEvalsZeroOne
+              (outerTranscriptMultiplicity (F := F) (n := n) (M := M)
+                (params := params) tr).1
+          let Pole : F → Prop := fun x =>
+            ∃ a : LookupOccur n M, x + lookupOccurValue table columns a = 0
+          let GoodRoot : F → Prop := fun x =>
+            (∀ u : Fin n → Fin 2, x + table u ≠ 0) ∧
+              Polynomial.eval x (clearedLookupIdentity table columns multiplicity) = 0
+          have hdegree :
+              (clearedLookupIdentity table columns multiplicity).natDegree ≤
+                (M + 1) * Fintype.card (Fin n → Fin 2) - 1 :=
+            hClearedDegree table columns multiplicity
+          have hroots :
+              (Finset.univ.filter GoodRoot).card ≤
+                (M + 1) * Fintype.card (Fin n → Fin 2) - 1 := by
+            simpa [GoodRoot] using hBadRoots table columns multiplicity hpoly hdegree
+          refine le_trans (probEvent_mono'' (q := fun x => Pole x ∨ GoodRoot x) ?_) ?_
+          · intro x hx
+            change outerBadX (F := F) (n := n) (M := M) table columns multiplicity x at hx
+            rcases hx with hpole | hroot
+            · exact Or.inl hpole
+            · by_cases htable : ∀ u : Fin n → Fin 2, x + table u ≠ 0
+              · exact Or.inr ⟨htable, hroot⟩
+              · push Not at htable
+                obtain ⟨u, hu⟩ := htable
+                exact Or.inl ⟨LookupOccur.table u, hu⟩
+          · refine le_trans (probEvent_or_le ($ᵗ F) Pole GoodRoot) ?_
+            rw [probEvent_uniformSample, probEvent_uniformSample]
+            simpa [Pole, xErr] using
+              add_le_add
+                (ENNReal.div_le_div_right
+                  (Nat.cast_le.mpr
+                    (lookupOccur_pole_card_le (F := F) (n := n) (M := M) table columns))
+                  (Fintype.card F : ENNReal))
+                (ENNReal.div_le_div_right (Nat.cast_le.mpr hroots)
+                  (Fintype.card F : ENNReal))
         change
           Pr[BadXPair |
             (simulateQ
@@ -1099,41 +1189,27 @@ theorem logup_outer_soundness_from_local_algebra
                       ProtocolSpec.challengeOracleInterface)
                 pure (tr, challenge))).run' s' =
               (($ᵗ F) >>= (pure ∘ fun x : F => (tr, x))) := by
-          simp only [simulateQ_bind, ProtocolSpec.getChallenge, QueryImpl.addLift_def,
-            QueryImpl.simulateQ_add_liftComp_right, HasQuery.instOfMonadLift_query,
-            outerChallengeXIdx, StateT.run'_bind', simulateQ_pure, StateT.run'_pure']
-          let qIn : ([(outerPSpec F n params).Challenge]ₒ'
-              ProtocolSpec.challengeOracleInterface).Domain :=
-            ⟨outerChallengeXIdx F n M params, ()⟩
-          have hq :
+          have hget :
               simulateQ
-                (QueryImpl.liftTarget (StateT σ ProbComp)
-                  (ProtocolSpec.challengeQueryImpl (pSpec := outerPSpec F n params)))
-                (liftM (OracleSpec.query qIn) :
-                  OracleComp ([(outerPSpec F n params).Challenge]ₒ'
-                    ProtocolSpec.challengeOracleInterface) F) =
-              (liftM ($ᵗ F) : StateT σ ProbComp F) := by
-            rw [simulateQ_query]
-            simp only [ProtocolSpec.ChallengeIdx, Nat.reduceAdd, Fin.vcons_fin_zero,
-              MultiplicityMessage, HelperMessages, BatchingChallenge, ProtocolSpec.Challenge,
-              outerChallengeXIdx, Fin.isValue, OracleQuery.input_query, OracleQuery.cont_query,
-              QueryImpl.liftTarget_apply, ProtocolSpec.challengeQueryImpl, qIn]
-            change id <$> (liftM (($ᵗ F) : ProbComp F) : StateT σ ProbComp F) =
-              (liftM (($ᵗ F) : ProbComp F) : StateT σ ProbComp F)
-            simp
+                (impl.addLift ProtocolSpec.challengeQueryImpl :
+                  QueryImpl
+                    (oSpec + [(outerPSpec F n params).Challenge]ₒ'
+                      ProtocolSpec.challengeOracleInterface)
+                    (StateT σ ProbComp))
+                (((outerPSpec F n params).getChallenge
+                  (outerChallengeXIdx F n M params)).liftComp
+                    (oSpec + [(outerPSpec F n params).Challenge]ₒ'
+                      ProtocolSpec.challengeOracleInterface)) =
+                (liftM ($ᵗ F) : StateT σ ProbComp F) := by
+            rw [OracleComp.liftComp_eq_liftM]
+            exact ProtocolSpec.simulateQ_addLift_challengeQueryImpl_getChallenge impl
+              (outerChallengeXIdx F n M params)
+          rw [simulateQ_bind, hget]
+          simp only [simulateQ_pure]
           change
-            (do
-              let x ←
-                (simulateQ
-                  (QueryImpl.liftTarget (StateT σ ProbComp)
-                    (ProtocolSpec.challengeQueryImpl (pSpec := outerPSpec F n params)))
-                  (liftM (OracleSpec.query qIn) :
-                    OracleComp ([(outerPSpec F n params).Challenge]ₒ'
-                      ProtocolSpec.challengeOracleInterface) F)).run s'
-              pure (tr, x.1)) =
-                (($ᵗ F) >>= (pure ∘ fun x : F => (tr, x)))
-          rw [hq]
-          simp [bind_assoc, map_eq_bind_pure_comp]
+            ((liftM ($ᵗ F) : StateT σ ProbComp F) >>= fun x => pure (tr, x)).run' s' = _
+          rw [StateT.run'_liftM_bind]
+          simp [Function.comp_def]
         rw [hchallenge]
         calc
           Pr[BadXPair | (($ᵗ F) >>= (pure ∘ fun x : F => (tr, x)))]
@@ -1143,8 +1219,8 @@ theorem logup_outer_soundness_from_local_algebra
           _ ≤ ↑(rbrErr (outerChallengeXIdx F n M params)) := by
                 simpa [Function.comp_def, rbrErr, outerChallengeXIdx] using hUniform
     · subst i
-      letI : Inhabited F := ⟨0⟩
-      letI : SampleableType (BatchingChallenge F n params.numGroups) := by
+      let _ : Inhabited F := ⟨0⟩
+      let _ : SampleableType (BatchingChallenge F n params.numGroups) := by
         change SampleableType ((Fin n → F) × (Fin params.numGroups → F))
         infer_instance
       let table : (Fin n → Fin 2) → F :=
@@ -1206,13 +1282,44 @@ theorem logup_outer_soundness_from_local_algebra
                   table columns multiplicity x ∨
                   outerBadZ (F := F) (n := n) (M := M) (params := params)
                     (params.group) table columns multiplicity helpers x p.2.1 ∨
-                    outerBadBatch (F := F) (n := n) (M := M) (params := params)
+                  outerBadBatch (F := F) (n := n) (M := M) (params := params)
                       (params.group) table columns multiplicity helpers x p.2.1 p.2.2 := by
-            simpa [outerSoundnessStateFunction, outerSoundnessState, outerChallengeBatchIdx,
-              outerTranscriptMultiplicityAt3, outerTranscriptXAt3, outerTranscriptHelpersAt3,
-              outerTranscriptMultiplicityFull, outerTranscriptXFull, outerTranscriptHelpersFull,
-              outerTranscriptBatchFull, ProtocolSpec.Transcript.concat, Fin.snoc,
-              table, columns, multiplicity, helpers, x] using htrue
+            let tr4 : (outerPSpec F n params).FullTranscript :=
+              ProtocolSpec.Transcript.concat (pSpec := outerPSpec F n params)
+                (m := (3 : Fin 4)) p.2 p.1
+            have htrueNorm :
+                outerSoundnessState (F := F) (n := n) (M := M) (params := params)
+                  stmtPair (4 : Fin 5) tr4 := by
+              simpa [tr4, outerSoundnessStateFunction, outerChallengeBatchIdx] using htrue
+            have hmult :
+                outerTranscriptMultiplicityFull (F := F) (n := n) (M := M)
+                    (params := params) tr4 =
+                  outerTranscriptMultiplicityAt3 (F := F) (n := n) (M := M)
+                    (params := params) p.1 := by
+              unfold outerTranscriptMultiplicityFull outerTranscriptMultiplicityAt3
+                tr4
+              solveEarlierTranscriptCast
+            have hx :
+                outerTranscriptXFull (F := F) (n := n) (M := M) (params := params)
+                    tr4 =
+                  outerTranscriptXAt3 (F := F) (n := n) (M := M) (params := params) p.1 := by
+              unfold outerTranscriptXFull outerTranscriptXAt3 tr4
+              solveEarlierTranscriptCast
+            have hhelpers :
+                outerTranscriptHelpersFull (F := F) (n := n) (M := M) (params := params)
+                    tr4 =
+                  outerTranscriptHelpersAt3 (F := F) (n := n) (M := M)
+                    (params := params) p.1 := by
+              unfold outerTranscriptHelpersFull outerTranscriptHelpersAt3
+                tr4
+              solveEarlierTranscriptCast
+            have hbatch :
+                outerTranscriptBatchFull (F := F) (n := n) (M := M) (params := params)
+                    tr4 = p.2 := by
+              unfold outerTranscriptBatchFull tr4
+              solveLastTranscriptCast
+            simpa [outerSoundnessState, hmult, hx, hhelpers, hbatch,
+              table, columns, multiplicity, helpers, x] using htrueNorm
           rcases htrue' with hlang | hbadx | hbadz | hbadBatch
           · exact False.elim (hnotLang hlang)
           · exact False.elim (hnotBadX hbadx)
@@ -1242,7 +1349,7 @@ theorem logup_outer_soundness_from_local_algebra
           by_cases hfalse :
               ¬ outerSoundnessState (F := F) (n := n) (M := M) (params := params)
                 stmtPair (3 : Fin 5) tr
-          · letI : Inhabited F := ⟨0⟩
+          · let _ : Inhabited F := ⟨0⟩
             have hnotBadX :
                 ¬ outerBadX (F := F) (n := n) (M := M)
                   table columns multiplicity x := by
@@ -1318,49 +1425,30 @@ theorem logup_outer_soundness_from_local_algebra
                 pure (tr, challenge))).run' s' =
               (($ᵗ (BatchingChallenge F n params.numGroups)) >>=
                 (pure ∘ fun batch : BatchingChallenge F n params.numGroups => (tr, batch))) := by
-          simp only [simulateQ_bind, ProtocolSpec.getChallenge, QueryImpl.addLift_def,
-            QueryImpl.simulateQ_add_liftComp_right, HasQuery.instOfMonadLift_query,
-            outerChallengeBatchIdx, StateT.run'_bind', simulateQ_pure, StateT.run'_pure']
-          let qIn : ([(outerPSpec F n params).Challenge]ₒ'
-              ProtocolSpec.challengeOracleInterface).Domain :=
-            ⟨outerChallengeBatchIdx F n M params, ()⟩
-          have hq :
+          have hget :
               simulateQ
-                (QueryImpl.liftTarget (StateT σ ProbComp)
-                  (ProtocolSpec.challengeQueryImpl (pSpec := outerPSpec F n params)))
-                (liftM (OracleSpec.query qIn) :
-                  OracleComp ([(outerPSpec F n params).Challenge]ₒ'
-                    ProtocolSpec.challengeOracleInterface)
-                    (BatchingChallenge F n params.numGroups)) =
-              (liftM ($ᵗ (BatchingChallenge F n params.numGroups)) :
-                StateT σ ProbComp (BatchingChallenge F n params.numGroups)) := by
-            rw [simulateQ_query]
-            simp only [BatchingChallenge, ProtocolSpec.ChallengeIdx, Nat.reduceAdd,
-              Fin.vcons_fin_zero, MultiplicityMessage, HelperMessages, ProtocolSpec.Challenge,
-              outerChallengeBatchIdx, Fin.isValue, OracleQuery.input_query, OracleQuery.cont_query,
-              QueryImpl.liftTarget_apply, ProtocolSpec.challengeQueryImpl, qIn]
-            change id <$> (liftM (($ᵗ (BatchingChallenge F n params.numGroups)) :
-                ProbComp (BatchingChallenge F n params.numGroups)) :
-                StateT σ ProbComp (BatchingChallenge F n params.numGroups)) =
-              (liftM (($ᵗ (BatchingChallenge F n params.numGroups)) :
-                ProbComp (BatchingChallenge F n params.numGroups)) :
-                StateT σ ProbComp (BatchingChallenge F n params.numGroups))
-            simp
-          change
-            (do
-              let batch ←
-                (simulateQ
-                  (QueryImpl.liftTarget (StateT σ ProbComp)
-                    (ProtocolSpec.challengeQueryImpl (pSpec := outerPSpec F n params)))
-                  (liftM (OracleSpec.query qIn) :
-                    OracleComp ([(outerPSpec F n params).Challenge]ₒ'
+                (impl.addLift ProtocolSpec.challengeQueryImpl :
+                  QueryImpl
+                    (oSpec + [(outerPSpec F n params).Challenge]ₒ'
                       ProtocolSpec.challengeOracleInterface)
-                      (BatchingChallenge F n params.numGroups))).run s'
-              pure (tr, batch.1)) =
-                (($ᵗ (BatchingChallenge F n params.numGroups)) >>=
-                  (pure ∘ fun batch : BatchingChallenge F n params.numGroups => (tr, batch)))
-          rw [hq]
-          simp [bind_assoc, map_eq_bind_pure_comp]
+                    (StateT σ ProbComp))
+                (((outerPSpec F n params).getChallenge
+                  (outerChallengeBatchIdx F n M params)).liftComp
+                    (oSpec + [(outerPSpec F n params).Challenge]ₒ'
+                      ProtocolSpec.challengeOracleInterface)) =
+                (liftM ($ᵗ (BatchingChallenge F n params.numGroups)) :
+                  StateT σ ProbComp (BatchingChallenge F n params.numGroups)) := by
+            rw [OracleComp.liftComp_eq_liftM]
+            exact ProtocolSpec.simulateQ_addLift_challengeQueryImpl_getChallenge impl
+              (outerChallengeBatchIdx F n M params)
+          rw [simulateQ_bind, hget]
+          simp only [simulateQ_pure]
+          change
+            ((liftM ($ᵗ (BatchingChallenge F n params.numGroups)) :
+              StateT σ ProbComp (BatchingChallenge F n params.numGroups)) >>=
+                fun batch => pure (tr, batch)).run' s' = _
+          rw [StateT.run'_liftM_bind]
+          simp [Function.comp_def]
         rw [hchallenge]
         calc
           Pr[BadBatchPair |
@@ -1407,5 +1495,4 @@ theorem logup_outer_soundness_from_local_algebra
   simp [xErr, batchErr, logupOuterSoundnessError, add_assoc]
 
 end Soundness
-
 end Logup

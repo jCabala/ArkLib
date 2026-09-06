@@ -117,8 +117,7 @@ theorem exists_missing_column_with_nonzero_lookup_count
       (a := a) hmissing
   exact ⟨i, u, hmissing, hpos, hcast, htable⟩
 
-set_option linter.unusedDecidableInType false in
-omit [SampleableType F] in
+omit [DecidableEq F] [SampleableType F] in
 /-- Contrapositive of LogUp's set-inclusion lemma for an arbitrary malicious multiplicity oracle:
 if the lookup input is false, the cleared rational identity is not the zero polynomial. -/
 theorem clearedLookupIdentity_ne_zero_of_not_input
@@ -130,6 +129,7 @@ theorem clearedLookupIdentity_ne_zero_of_not_input
         (fun i => MvPolynomial.toEvalsZeroOne (oStmt (.column i)).1)
         multiplicity ≠ 0 := by
   classical
+  let _ : DecidableEq F := Classical.decEq F
   let table := MvPolynomial.toEvalsZeroOne (oStmt .table).1
   let columns : Fin M → (Fin n → Fin 2) → F :=
     fun i => MvPolynomial.toEvalsZeroOne (oStmt (.column i)).1
@@ -140,7 +140,10 @@ theorem clearedLookupIdentity_ne_zero_of_not_input
   have hfiber : 0 < (Finset.univ.filter fun a : LookupOccur n M =>
       lookupOccurValue table columns a = z).card := by
     rw [Finset.card_pos]
-    exact ⟨LookupOccur.column i u, by simp [lookupOccurValue, z, columns]⟩
+    refine ⟨LookupOccur.column i u, ?_⟩
+    simp only [Finset.mem_filter, Finset.mem_univ, true_and]
+    change columns i u = z
+    rfl
   have hsum :
       (∑ a ∈ (Finset.univ.filter fun a : LookupOccur n M =>
         lookupOccurValue table columns a = z),
@@ -164,7 +167,7 @@ theorem clearedLookupIdentity_ne_zero_of_not_input
     (F := F) (value := lookupOccurValue table columns)
     (coeff := lookupOccurNumerator multiplicity) hfiber hsum
 
-set_option linter.unusedDecidableInType false in
+omit [DecidableEq F] in
 /-- Uniform `x` bound for the division-safe bad event: either `x` is a denominator pole for some
 occurrence, or it is a root of the nonzero cleared lookup identity. -/
 theorem clearedLookupIdentity_bad_x_prob_le
@@ -179,6 +182,7 @@ theorem clearedLookupIdentity_bad_x_prob_le
         (((M + 1) * Fintype.card (Fin n → Fin 2) - 1 : ℕ) : ENNReal) /
           (Fintype.card F : ENNReal) := by
   classical
+  let _ : DecidableEq F := Classical.decEq F
   refine le_trans (probEvent_or_le ($ᵗ F)
     (fun x : F => ∃ a : LookupOccur n M, x + lookupOccurValue table columns a = 0)
     (fun x : F => Polynomial.eval x (clearedLookupIdentity table columns multiplicity) = 0)) ?_
@@ -193,7 +197,7 @@ theorem clearedLookupIdentity_bad_x_prob_le
           table columns multiplicity hpoly))
       (Fintype.card F : ENNReal))
 
-set_option linter.unusedDecidableInType false in
+omit [DecidableEq F] in
 /-- Schwartz-Zippel for the verifier's uniform `z : F`i`n n → F` sampling, phrased in the
 `ProbComp` notation used by the protocol proofs. -/
 theorem mvPolynomial_uniform_eval_zero_prob_le_div
@@ -201,6 +205,7 @@ theorem mvPolynomial_uniform_eval_zero_prob_le_div
     Pr[fun z : Fin n → F => MvPolynomial.eval z p = 0 | $ᵗ (Fin n → F)] ≤
       (d : ENNReal) / (Fintype.card F : ENNReal) := by
   classical
+  let _ : DecidableEq F := Classical.decEq F
   rw [probEvent_uniformSample]
   have hFpos : 0 < Fintype.card F := Fintype.card_pos_iff.mpr ⟨0⟩
   have hcount :=
@@ -304,7 +309,7 @@ theorem random_linear_batch_bad_card_le_of_coeff_ne_zero (K : ℕ)
         Finset.card_le_card_of_injOn drop (fun _ _ => Finset.mem_univ _) hdrop_inj
     _ = Fintype.card Rest := Finset.card_univ
 
-set_option linter.unusedDecidableInType false in
+omit [DecidableEq F] in
 /-- The batched outer sumcheck claim is a random linear combination of the helper-sum claim and
 the `K` domain-identity claims, so if one unbatched claim is nonzero the random batching scalar
 hits zero with probability at most `1 / |F|`. -/
@@ -313,6 +318,7 @@ theorem random_linear_batch_zero_prob_le (K : ℕ)
     Pr[fun lam : Fin K → F => c₀ + ∑ k : Fin K, lam k * c k = 0 | $ᵗ (Fin K → F)] ≤
       ((1 : ℕ) : ENNReal) / (Fintype.card F : ENNReal) := by
   classical
+  let _ : DecidableEq F := Classical.decEq F
   by_cases hCoeff : ∃ k, c k ≠ 0
   · obtain ⟨k₀, hk₀⟩ := hCoeff
     rw [probEvent_uniformSample]

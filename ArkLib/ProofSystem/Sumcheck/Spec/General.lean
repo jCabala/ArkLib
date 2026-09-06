@@ -199,7 +199,6 @@ lemma oracleReduction_verifier_eq_oracleVerifier :
     (oracleReduction R deg D n oSpec).verifier = oracleVerifier R deg D n oSpec := by
   rfl
 
-omit [SampleableType R] in
 /-- The full Sumcheck prover preserves the oracle statement through all rounds. -/
 theorem prover_preserves_oracleStmt
     (stmt : StatementRound R n 0 × (∀ j, OracleStatement R n deg j))

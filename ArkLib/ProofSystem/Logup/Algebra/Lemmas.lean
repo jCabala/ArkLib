@@ -62,62 +62,67 @@ noncomputable def batchedSumcheckPolynomial
 private theorem prod_phiPoly_degreeOf
     (hphi : ∀ i v, MvPolynomial.degreeOf v (phiPoly i) ≤ 1)
     (s : Finset (Fin T)) (v : Fin n) :
-    MvPolynomial.degreeOf v (∏ i ∈ s, phiPoly i) ≤ T := by
+    MvPolynomial.degreeOf v (∏ i ∈ s, phiPoly i) ≤ s.card := by
   calc
     _ ≤ ∑ i ∈ s, MvPolynomial.degreeOf v (phiPoly i) := MvPolynomial.degreeOf_prod_le v _ _
     _ ≤ ∑ _i ∈ s, 1 := Finset.sum_le_sum (fun i _ => hphi i v)
     _ = s.card := by simp
-    _ ≤ T := le_trans (Finset.card_le_univ s) (by simp)
 
-/-- A cleared identity over at most `T` fractional terms has individual degree at most `T + 1`.
+/-- A cleared identity over groups of at most `L` fractional terms has individual degree at most
+`L + 1`.
 
 The extra `+ 1` comes from the helper or numerator factor.  This lemma is the local degree bound
 used before the equality kernel and random batching scalar are added. -/
 theorem batchedDomainIdentity_degreeOf
+    {L : ℕ} (hgroups : ∀ k, (groups k).card ≤ L)
     (hphi : ∀ i v, MvPolynomial.degreeOf v (phiPoly i) ≤ 1)
     (hnumer : ∀ i v, MvPolynomial.degreeOf v (numerPoly i) ≤ 1)
     (hhelper : ∀ k v, MvPolynomial.degreeOf v (helperPoly k) ≤ 1)
     (k : Fin K) (v : Fin n) :
     MvPolynomial.degreeOf v (batchedDomainIdentity groups phiPoly numerPoly helperPoly k)
-      ≤ T + 1 := by
+      ≤ L + 1 := by
   unfold batchedDomainIdentity
   have hLeft :
-      MvPolynomial.degreeOf v (helperPoly k * (∏ i ∈ groups k, phiPoly i)) ≤ T + 1 := by
+      MvPolynomial.degreeOf v (helperPoly k * (∏ i ∈ groups k, phiPoly i)) ≤ L + 1 := by
     calc
       _ ≤ MvPolynomial.degreeOf v (helperPoly k) +
           MvPolynomial.degreeOf v (∏ i ∈ groups k, phiPoly i) := MvPolynomial.degreeOf_mul_le v _ _
-      _ ≤ 1 + T := by
+      _ ≤ 1 + (groups k).card := by
         gcongr
         · exact hhelper k v
         · exact prod_phiPoly_degreeOf phiPoly hphi (groups k) v
-      _ = T + 1 := by omega
+      _ ≤ 1 + L := Nat.add_le_add_left (hgroups k) 1
+      _ = L + 1 := by omega
   have hRight :
       MvPolynomial.degreeOf v
-        (∑ i ∈ groups k, numerPoly i * ∏ j ∈ (groups k).erase i, phiPoly j) ≤ T + 1 := by
+        (∑ i ∈ groups k, numerPoly i * ∏ j ∈ (groups k).erase i, phiPoly j) ≤ L + 1 := by
     calc
       _ ≤ (groups k).sup fun i =>
           MvPolynomial.degreeOf v (numerPoly i * ∏ j ∈ (groups k).erase i, phiPoly j) :=
         MvPolynomial.degreeOf_sum_le v _ _
-      _ ≤ T + 1 := by
+      _ ≤ L + 1 := by
         apply Finset.sup_le
         intro i _
         calc
           _ ≤ MvPolynomial.degreeOf v (numerPoly i) +
               MvPolynomial.degreeOf v (∏ j ∈ (groups k).erase i, phiPoly j) :=
             MvPolynomial.degreeOf_mul_le v _ _
-          _ ≤ 1 + T := by
+          _ ≤ 1 + ((groups k).erase i).card := by
             gcongr
             · exact hnumer i v
             · exact prod_phiPoly_degreeOf phiPoly hphi ((groups k).erase i) v
-          _ = T + 1 := by omega
+          _ ≤ 1 + L := Nat.add_le_add_left ((Finset.card_erase_le).trans (hgroups k)) 1
+          _ = L + 1 := by omega
   exact (MvPolynomial.degreeOf_sub_le v _ _).trans (max_le hLeft hRight)
 
-/-- The generic batched sumcheck polynomial has individual degree at most `T + 2`.
+/-- The generic batched sumcheck polynomial has individual degree at most `L + 2` when every group
+has cardinality at most `L`.
 
 Compared with a single cleared identity, batching adds one equality-kernel factor, which
 contributes one more degree in each variable.  Constants such as the batching scalars do not affect
 the bound. -/
 theorem batchedSumcheckPolynomial_degreeOf
+    {L : ℕ} (hgroups : ∀ k, (groups k).card ≤ L)
     (zChallenge : Fin n → F) (batchingScalars : Fin K → F)
     (hphi : ∀ i v, MvPolynomial.degreeOf v (phiPoly i) ≤ 1)
     (hnumer : ∀ i v, MvPolynomial.degreeOf v (numerPoly i) ≤ 1)
@@ -125,7 +130,7 @@ theorem batchedSumcheckPolynomial_degreeOf
     (v : Fin n) :
     MvPolynomial.degreeOf v
         (batchedSumcheckPolynomial groups phiPoly numerPoly helperPoly zChallenge batchingScalars)
-      ≤ T + 2 := by
+      ≤ L + 2 := by
   unfold batchedSumcheckPolynomial
   calc
     _ ≤ (Finset.univ : Finset (Fin K)).sup fun k =>
@@ -134,15 +139,15 @@ theorem batchedSumcheckPolynomial_degreeOf
             MvPolynomial.eqPolynomial zChallenge * MvPolynomial.C (batchingScalars k) *
               batchedDomainIdentity groups phiPoly numerPoly helperPoly k) :=
       MvPolynomial.degreeOf_sum_le v _ _
-    _ ≤ T + 2 := by
+    _ ≤ L + 2 := by
       apply Finset.sup_le
       intro k _
       have hHelper :
-          MvPolynomial.degreeOf v (helperPoly k) ≤ T + 2 := (hhelper k v).trans (by omega)
+          MvPolynomial.degreeOf v (helperPoly k) ≤ L + 2 := (hhelper k v).trans (by omega)
       have hProduct :
           MvPolynomial.degreeOf v
             (MvPolynomial.eqPolynomial zChallenge * MvPolynomial.C (batchingScalars k) *
-              batchedDomainIdentity groups phiPoly numerPoly helperPoly k) ≤ T + 2 := by
+              batchedDomainIdentity groups phiPoly numerPoly helperPoly k) ≤ L + 2 := by
         calc
           _ ≤ MvPolynomial.degreeOf v
                 (MvPolynomial.eqPolynomial zChallenge * MvPolynomial.C (batchingScalars k)) +
@@ -155,13 +160,13 @@ theorem batchedSumcheckPolynomial_degreeOf
                 (batchedDomainIdentity groups phiPoly numerPoly helperPoly k) := by
             gcongr
             exact MvPolynomial.degreeOf_mul_le v _ _
-          _ ≤ (1 + 0) + (T + 1) := by
+          _ ≤ (1 + 0) + (L + 1) := by
             gcongr
             · exact MvPolynomial.eqPolynomial_degreeOf (R := F) zChallenge v
             · exact (MvPolynomial.degreeOf_C (R := F) (batchingScalars k) v).le
             · exact batchedDomainIdentity_degreeOf groups phiPoly numerPoly helperPoly
-                hphi hnumer hhelper k v
-          _ = T + 2 := by omega
+                hgroups hphi hnumer hhelper k v
+          _ = L + 2 := by omega
       exact (MvPolynomial.degreeOf_add_le v _ _).trans (max_le hHelper hProduct)
 
 end BatchedPolynomial
@@ -367,7 +372,7 @@ theorem setInclusion_iff_cleared {ι κ : Type*} [Fintype ι] [Fintype κ]
       Finset.card_pos.mpr ⟨i, Finset.mem_filter.mpr ⟨Finset.mem_univ i, rfl⟩⟩
     exact hcastne _ hpos (lt_of_le_of_lt (hleA (a i)) hNa) hcoef
 
-set_option linter.unusedFintypeInType false in
+omit [Fintype F] in
 /-- **Lemma 5**, forward direction evaluated at a point `x` (paper eq. (15)). If every value of `a`
 occurs among the values of `b`, then the logarithmic-derivative identity holds at `x` with the
 normalized multiplicity `seqMultiplicity a (b j) / seqMultiplicity b (b j)` as witness. This is the
@@ -375,11 +380,12 @@ evaluated specialization that the completeness proof consumes; the formal `F[X]`
 `setInclusion_iff_cleared`. The hypothesis `hchar` (that a nonzero `a`-multiplicity forces a nonzero
 `b`-multiplicity in `F`) packages set inclusion together with the characteristic bound, exactly as
 in the protocol. Lean's `_ / 0 = 0` convention makes pole hypotheses unnecessary. -/
-theorem setInclusion_eval_forward {ι κ : Type*} [Fintype ι] [Fintype κ]
+theorem setInclusion_eval_forward {ι κ : Type*} [Finite F] [Fintype ι] [Fintype κ]
     (a : ι → F) (b : κ → F) (x : F)
     (hchar : ∀ z : F, seqMultiplicity a z ≠ 0 → (seqMultiplicity b z : F) ≠ 0) :
     (∑ i, (1 : F) / (x + a i))
       = ∑ j, (seqMultiplicity a (b j) : F) / (seqMultiplicity b (b j) : F) / (x + b j) := by
+  let _ := Fintype.ofFinite F
   have key : ∀ z : F,
       seqMultiplicity b z • ((seqMultiplicity a z : F) / (seqMultiplicity b z : F) / (x + z))
         = seqMultiplicity a z • ((1 : F) / (x + z)) := by
@@ -548,7 +554,15 @@ theorem clearedOccurrences_taylor_coeff_fiber_pred
           Polynomial.C (coeff a) *
             ∏ b ∈ (Finset.univ.erase a), (Polynomial.X + Polynomial.C (shifted b))
       rw [map_mul, map_prod]
-      simp [Polynomial.taylorAlgHom, shifted, add_assoc]
+      change Polynomial.taylor (-z) (Polynomial.C (coeff a)) *
+          ∏ b ∈ (Finset.univ.erase a),
+            Polynomial.taylor (-z) (Polynomial.X + Polynomial.C (value b)) = _
+      rw [Polynomial.taylor_C]
+      congr 1
+      apply Finset.prod_congr rfl
+      intro b _
+      simp only [map_add, Polynomial.taylor_X, Polynomial.taylor_C, shifted, map_neg]
+      ac_rfl
     by_cases ha : value a = z
     · have hafiber : a ∈ fiber := by simp [fiber, ha]
       have hfiberErase :
