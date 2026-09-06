@@ -66,19 +66,9 @@ theorem logup_outer_soundness
     (fun table columns multiplicity =>
       clearedLookupIdentity_natDegree_le (F := F) (n := n) (M := M)
         table columns multiplicity)
-    (fun table columns multiplicity hpoly hdegree => by
-      classical
-      let p := clearedLookupIdentity table columns multiplicity
-      have hsubset :
-          (Finset.univ.filter fun x : F =>
-            (∀ u : Fin n → Fin 2, x + table u ≠ 0) ∧ Polynomial.eval x p = 0).card ≤
-            p.roots.toFinset.card := by
-        refine Finset.card_le_card ?_
-        intro x hx
-        simp only [Finset.mem_filter, Finset.mem_univ, true_and] at hx
-        exact Multiset.mem_toFinset.mpr ((Polynomial.mem_roots hpoly).mpr hx.2)
-      exact hsubset.trans <| (Multiset.toFinset_card_le p.roots).trans <|
-        (Polynomial.card_roots' p).trans hdegree)
+    (fun table columns multiplicity hpoly hdegree =>
+      clearedLookupIdentity_bad_x_card_le (F := F) (n := n) (M := M)
+        table columns multiplicity hpoly hdegree)
     (fun K c₀ c hNonzero => random_linear_batch_zero_prob_le (F := F) K c₀ c hNonzero)
 
 end

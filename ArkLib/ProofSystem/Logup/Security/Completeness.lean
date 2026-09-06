@@ -106,27 +106,6 @@ private theorem le_probEvent_bind_of_forall_le {m : Type → Type*} [Monad m] [L
     (by simp [htrue]) (fun x hx _ => h x hx)
   simpa using hmul
 
-/-- Any value in the support of `pure x` is definitionally equal to `x`. -/
-private theorem support_pure_eq {m : Type → Type*} [Monad m] [LawfulMonad m]
-    [MonadLiftT m SetM] [LawfulMonadLiftT m SetM]
-    {α : Type} {x y : α} (h : y ∈ support (pure x : m α)) : y = x := by
-  simpa [mem_support_pure_iff] using h
-
-/-- If simulating an oracle computation can return `(y, s')`, then `y` was possible in the
-underlying oracle computation.
-
-This strips away the simulator state when a proof only needs the support fact about the oracle
-computation itself. -/
-private theorem support_simulateQ_run_fst_subset {ι : Type} {spec : OracleSpec ι}
-    {m : Type → Type*} [Monad m] [LawfulMonad m] [MonadLiftT m SetM]
-    [LawfulMonadLiftT m SetM] {σ α : Type}
-    (impl : QueryImpl spec (StateT σ m)) {oa : OracleComp spec α} {s s' : σ} {y : α}
-    (h : (y, s') ∈ support ((simulateQ impl oa).run s)) :
-    y ∈ support oa :=
-  OracleComp.support_simulateQ_run'_subset impl oa s (by
-    rw [StateT.run'_eq, support_map, Set.mem_image]
-    exact ⟨(y, s'), h, rfl⟩)
-
 /-- A successful full reduction run contains a prover transcript that was produced by the prover.
 
 Completeness of the lifted sumcheck phase needs this to apply the generic sumcheck prover-side

@@ -813,11 +813,13 @@ theorem clearedLookupIdentity_natDegree_le
           rw [zero_add, Finset.card_erase_of_mem (Finset.mem_univ a), Finset.card_univ,
             LookupOccur.card]
 
-/-- Root-count form of the previous two lemmas, restricted to non-pole challenges. -/
+/-- Root-count bound for non-pole challenges satisfying the cleared lookup identity. -/
 theorem clearedLookupIdentity_bad_x_card_le [Fintype F] [DecidableEq F]
     (table : (Fin n → Fin 2) → F) (columns : Fin M → (Fin n → Fin 2) → F)
     (multiplicity : (Fin n → Fin 2) → F)
-    (hpoly : clearedLookupIdentity table columns multiplicity ≠ 0) :
+    (hpoly : clearedLookupIdentity table columns multiplicity ≠ 0)
+    (hdegree : (clearedLookupIdentity table columns multiplicity).natDegree ≤
+      (M + 1) * Fintype.card (Fin n → Fin 2) - 1) :
     (Finset.univ.filter fun x : F =>
       (∀ u : Fin n → Fin 2, x + table u ≠ 0) ∧
         Polynomial.eval x (clearedLookupIdentity table columns multiplicity) = 0).card ≤
@@ -839,9 +841,7 @@ theorem clearedLookupIdentity_bad_x_card_le [Fintype F] [DecidableEq F]
         ≤ p.roots.toFinset.card := hsubset
     _ ≤ p.roots.card := Multiset.toFinset_card_le p.roots
     _ ≤ p.natDegree := Polynomial.card_roots' p
-    _ ≤ (M + 1) * Fintype.card (Fin n → Fin 2) - 1 :=
-        clearedLookupIdentity_natDegree_le (F := F) (n := n) (M := M)
-          table columns multiplicity
+    _ ≤ (M + 1) * Fintype.card (Fin n → Fin 2) - 1 := hdegree
 
 /-- The set of denominator-pole challenges for all table and column occurrences has size at most
 the number of occurrences. -/

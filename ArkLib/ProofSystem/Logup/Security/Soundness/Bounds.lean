@@ -168,36 +168,6 @@ theorem clearedLookupIdentity_ne_zero_of_not_input
     (coeff := lookupOccurNumerator multiplicity) hfiber hsum
 
 omit [DecidableEq F] in
-/-- Uniform `x` bound for the division-safe bad event: either `x` is a denominator pole for some
-occurrence, or it is a root of the nonzero cleared lookup identity. -/
-theorem clearedLookupIdentity_bad_x_prob_le
-    (table : (Fin n → Fin 2) → F) (columns : Fin M → (Fin n → Fin 2) → F)
-    (multiplicity : (Fin n → Fin 2) → F)
-    (hpoly : clearedLookupIdentity table columns multiplicity ≠ 0) :
-    Pr[fun x : F =>
-        (∃ a : LookupOccur n M, x + lookupOccurValue table columns a = 0) ∨
-          Polynomial.eval x (clearedLookupIdentity table columns multiplicity) = 0 | $ᵗ F] ≤
-      (((M + 1) * Fintype.card (Fin n → Fin 2) : ℕ) : ENNReal) /
-          (Fintype.card F : ENNReal) +
-        (((M + 1) * Fintype.card (Fin n → Fin 2) - 1 : ℕ) : ENNReal) /
-          (Fintype.card F : ENNReal) := by
-  classical
-  let _ : DecidableEq F := Classical.decEq F
-  refine le_trans (probEvent_or_le ($ᵗ F)
-    (fun x : F => ∃ a : LookupOccur n M, x + lookupOccurValue table columns a = 0)
-    (fun x : F => Polynomial.eval x (clearedLookupIdentity table columns multiplicity) = 0)) ?_
-  rw [probEvent_uniformSample, probEvent_uniformSample]
-  exact add_le_add
-    (ENNReal.div_le_div_right
-      (Nat.cast_le.mpr (lookupOccur_pole_card_le (F := F) (n := n) (M := M) table columns))
-      (Fintype.card F : ENNReal))
-    (ENNReal.div_le_div_right
-      (Nat.cast_le.mpr
-        (clearedLookupIdentity_root_card_le (F := F) (n := n) (M := M)
-          table columns multiplicity hpoly))
-      (Fintype.card F : ENNReal))
-
-omit [DecidableEq F] in
 /-- Schwartz-Zippel for the verifier's uniform `z : F`i`n n → F` sampling, phrased in the
 `ProbComp` notation used by the protocol proofs. -/
 theorem mvPolynomial_uniform_eval_zero_prob_le_div
