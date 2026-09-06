@@ -224,15 +224,13 @@ theorem seqCompose_preserves {m : ℕ} :
           let stmt₂ ← (V 0).run stmt trApp.fst
           let stmt₃ ← tail.run stmt₂ trApp.snd
           return stmt₃) : OptionT (OracleComp oSpec) (Stmt (Fin.last (m + 1))))) := by
-        change out ∈ support ((Verifier.append (V 0) tail).run stmt trApp) at h
-        rw [Verifier.append_run] at h
-        exact h
+        rw [← @Verifier.append_run ι oSpec (Stmt 0) (Stmt (Fin.succ 0))
+          (Stmt (Fin.last (m + 1))) (n 0)
+          (Fin.vsum fun i : Fin m => n (Fin.succ i))
+          (pSpec 0) tailSpec (V 0) tail stmt trApp]
+        simpa [trApp, tail, tailSpec, Verifier.seqCompose_succ, Function.comp_def] using h
       rw [mem_support_bind_iff] at h'
       rcases h' with ⟨stmt₂, h₁, hrest⟩
-      rw [mem_support_bind_iff] at hrest
-      rcases hrest with ⟨stmt₃, h₂, hpure⟩
-      rw [support_pure, Set.mem_singleton_iff] at hpure
-      cases hpure
       calc
         proj (Fin.last (m + 1)) out = proj (Fin.succ (Fin.last m)) out := rfl
         _ = proj (Fin.succ (0 : Fin (m + 1))) stmt₂ := by
@@ -240,7 +238,7 @@ theorem seqCompose_preserves {m : ℕ} :
             (V := fun i => V (Fin.succ i))
             (proj := fun i => proj (Fin.succ i))
             (fun i stmt out tr h => hV (Fin.succ i) stmt out tr h)
-            stmt₂ out trApp.snd h₂
+            stmt₂ out trApp.snd hrest
         _ = proj 0 stmt := hV 0 stmt stmt₂ trApp.fst h₁
 
 end Verifier

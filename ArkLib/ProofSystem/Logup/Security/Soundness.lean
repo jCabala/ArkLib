@@ -47,28 +47,28 @@ section
 omit [DecidableEq F]
 /-- Soundness of the outer LogUp phase, with the conservative error `logupOuterSoundnessError`.
 
-The hypothesis `hcard : |H| < |F|` is retained from the paper-shaped statement; the current formal
-bound itself is an unconditional union bound over occurrence poles, cleared-identity roots, bad
-`z`, and bad batching scalars. -/
+The hypothesis `hcard : |H| < |F|` is passed to the local-algebra bridge establishing that a false
+lookup statement yields a nonzero cleared identity.  The probability estimate is an unconditional
+union bound over occurrence poles, cleared-identity roots, bad `z`, and bad batching scalars. -/
 theorem logup_outer_soundness
     (hcard : Fintype.card (Fin n → Fin 2) < Fintype.card F) :
     (outerVerifier oSpec F n M params).soundness init impl
       (inputRelation F n M).language (logupMidRelation F n M params).language
       (logupOuterSoundnessError F n M params) := by
   classical
-  letI : DecidableEq F := Classical.decEq F
+  let _ : DecidableEq F := Classical.decEq F
   exact logup_outer_soundness_from_local_algebra
     (oSpec := oSpec) (F := F) (n := n) (M := M) (params := params)
     (init := init) (impl := impl) hcard
-    (fun stmt oStmt multiplicity hnot =>
+    (fun _hcard stmt oStmt multiplicity hnot =>
       clearedLookupIdentity_ne_zero_of_not_input (F := F) (n := n) (M := M)
         stmt oStmt multiplicity hnot)
     (fun table columns multiplicity =>
       clearedLookupIdentity_natDegree_le (F := F) (n := n) (M := M)
         table columns multiplicity)
-    (fun table columns multiplicity hpoly =>
+    (fun table columns multiplicity hpoly hdegree =>
       clearedLookupIdentity_bad_x_card_le (F := F) (n := n) (M := M)
-        table columns multiplicity hpoly)
+        table columns multiplicity hpoly hdegree)
     (fun K c₀ c hNonzero => random_linear_batch_zero_prob_le (F := F) K c₀ c hNonzero)
 
 end
@@ -87,7 +87,7 @@ private theorem sumcheckVerifier_compat_oracleStmt
     {innerStmtOut : Sumcheck.Spec.StatementRound F n (Fin.last n) ×
       (∀ i, Sumcheck.Spec.OracleStatement F n (logupSumcheckDegree M params) i)}
     (hCompat :
-      Verifier.compatStatement (logupSumcheckContextLens F n M params).stmt
+      Verifier.compatStatement (logupSumcheckExecutableContextLens F n M params).stmt.toLens
         (logupConcreteSumcheckOracleReduction oSpec F n M params).verifier.toVerifier
         outerStmt innerStmtOut) :
     innerStmtOut.2 = logupSumcheckOracleStmt F n M params outerStmt.1 outerStmt.2 := by
@@ -109,13 +109,13 @@ private theorem sumcheckVerifier_compat_oracleStmt
 end
 
 private instance logupSumcheckLensSound :
-    (logupSumcheckContextLens F n M params).stmt.IsSound
+    (logupSumcheckExecutableContextLens F n M params).stmt.toLens.IsSound
       (logupMidRelation F n M params).language
       (logupAfterSumcheckRelation F n M params).language
       (Sumcheck.Spec.relationRound F n (logupSumcheckDegree M params) (booleanDomain F) 0).language
       (Sumcheck.Spec.relationRound F n (logupSumcheckDegree M params) (booleanDomain F)
         (Fin.last n)).language
-      (Verifier.compatStatement (logupSumcheckContextLens F n M params).stmt
+      (Verifier.compatStatement (logupSumcheckExecutableContextLens F n M params).stmt.toLens
         (logupConcreteSumcheckOracleReduction oSpec F n M params).verifier.toVerifier) where
   proj_sound := by
     rintro ⟨stmt, oStmt⟩ hOuter hInner
@@ -126,7 +126,7 @@ private instance logupSumcheckLensSound :
     simp only [Set.mem_language_iff]
     refine ⟨(), ?_⟩
     unfold logupMidRelation
-    simp only [Set.mem_setOf_eq]
+    simp only [Set.mem_ofPred_eq]
     exact (logupSumcheckRelationInput_iff (F := F) (n := n) (M := M)
       (params := params)).mp hInner
   lift_sound := by
@@ -145,7 +145,8 @@ private instance logupSumcheckLensSound :
           innerStmtOut := by
       cases innerStmtOut
       simpa using hOStmt.symm
-    simpa [hPair, logupSumcheckContextLens, logupAfterSumcheckRelation] using hOuter
+    simpa [hPair, logupSumcheckExecutableContextLens,
+      logupSumcheckExecutableStatementLens, logupAfterSumcheckRelation] using hOuter
 
 section
 
@@ -177,8 +178,8 @@ theorem logup_sumcheck_soundness (sumcheckSoundnessError : ℝ≥0)
       (logupAfterSumcheckRelation F n M params).language
       sumcheckSoundnessError := by
   classical
-  letI : Inhabited F := ⟨0⟩
-  letI : Inhabited (Sumcheck.Spec.StatementRound F n (Fin.last n)) :=
+  let _ : Inhabited F := ⟨0⟩
+  let _ : Inhabited (Sumcheck.Spec.StatementRound F n (Fin.last n)) :=
     ⟨{ target := 0, challenges := fun _ => 0 }⟩
   let rbrErr :
       (Sumcheck.Spec.pSpec F (logupSumcheckDegree M params) n).ChallengeIdx → ℝ≥0 :=
@@ -215,7 +216,8 @@ theorem logup_sumcheck_soundness (sumcheckSoundnessError : ℝ≥0)
       (OracleVerifier.liftContext_rbr_soundness
         (init := init) (impl := impl)
         (V := (logupConcreteSumcheckOracleReduction oSpec F n M params).verifier)
-        (lens := (logupSumcheckContextLens F n M params).stmt)
+        (lens := (logupSumcheckExecutableContextLens F n M params).stmt)
+        (output := logupSumcheckLiftContextOutput oSpec F n M params)
         hRbrInner)
   have hSoundConcrete :
       (sumcheckVerifier oSpec F n M params).soundness init impl
@@ -311,10 +313,7 @@ theorem logup_finalCheck_soundness :
             OracleComp oSpec _) := by
     intro i q
     simp only [finalCheckQuery, OptionT.run_mk, simulateQ_map, qImpl,
-      OracleInterface.simOracle2, QueryImpl.addLift_def, simulateQ_query,
-      QueryImpl.add_apply_inr, QueryImpl.liftTarget_apply, QueryImpl.add,
-      OracleInterface.simOracle0, OracleInterface.answer, OracleQuery.cont_query,
-      OracleQuery.input_query]
+      OracleInterface.simOracle2, QueryImpl.addLift_def, OracleInterface.answer]
     change some <$> id <$>
         (pure (ReaderT.run (OracleInterface.toOC.impl q) (oStmt i)) :
           OracleComp oSpec _) =
@@ -386,8 +385,7 @@ theorem logup_finalCheck_soundness :
           (ReaderT.run (OracleInterface.toOC.impl stmt.finalClaim.challenges)
             (oStmt (.input (.column i)))))) =
           (pure (some (colValue i)) : OracleComp oSpec (Option F))
-        rw [hcolAnswer]
-        rfl)
+        rw [hcolAnswer])
     erw [simulateQ_option_elimM]
     erw [hcols]
     simp only [pure_bind, Option.elimM, Option.elim_some]
@@ -423,7 +421,7 @@ theorem logup_finalCheck_soundness :
           (pure none : OracleComp oSpec (Option (StmtOut × (∀ i, OStmtOut i)))) := by
     intro t
     obtain rfl : t = default := Unique.eq_default t
-    simp only [OracleVerifier.toVerifier, OptionT.run_bind]
+    simp only [OracleVerifier.toVerifier]
     have hInner :
         simulateQ
             (OracleInterface.simOracle2 oSpec oStmt
@@ -437,23 +435,7 @@ theorem logup_finalCheck_soundness :
           (((finalCheckVerifier oSpec F n M params).verify stmt (fun i => Fin.elim0 i)).run) =
         (pure none : OracleComp oSpec (Option StmtOut))
       exact hVerifyNone
-    have hInnerT :
-        OptionT.run
-          (simulateQ
-            (OracleInterface.simOracle2 oSpec oStmt
-              (ProtocolSpec.FullTranscript.messages default))
-            ((finalCheckVerifier oSpec F n M params).verify stmt
-              (ProtocolSpec.FullTranscript.challenges default))) =
-          (pure none : OracleComp oSpec (Option StmtOut)) := by
-      change simulateQ
-          (OracleInterface.simOracle2 oSpec oStmt
-            (ProtocolSpec.FullTranscript.messages (default : finalCheckPSpec.FullTranscript)))
-          (((finalCheckVerifier oSpec F n M params).verify stmt
-            (ProtocolSpec.FullTranscript.challenges
-              (default : finalCheckPSpec.FullTranscript))).run) =
-        (pure none : OracleComp oSpec (Option StmtOut))
-      exact hInner
-    erw [hInnerT]
+    rw [hInner]
     simp
   -- Step 5: with the verifier rejecting, the whole reduction never produces output, so its run
   -- is always `none` and the soundness event has probability `0 ≤ bound`.
@@ -497,14 +479,15 @@ theorem logup_soundness (sumcheckSoundnessError : ℝ≥0)
       (inputRelation F n M).language outputRelation.language
       (logupSoundnessError F n M params sumcheckSoundnessError) := by
   unfold logupVerifier logupSoundnessError
-  refine OracleVerifier.append_soundness.{0, 0, 0, 0}
-    (lang₂ := (logupAfterSumcheckRelation F n M params).language) _ _
+  exact OracleVerifier.append_soundness
+    ((outerVerifier oSpec F n M params).append (sumcheckVerifier oSpec F n M params))
+    (finalCheckVerifier oSpec F n M params)
     (OracleVerifier.append_soundness
-      (lang₂ := (logupMidRelation F n M params).language) _ _ ?_ ?_) ?_
-  · exact logup_outer_soundness oSpec F n M params init impl hcard
-  · exact logup_sumcheck_soundness oSpec F n M params init impl sumcheckSoundnessError
-      hSumcheckSoundness
-  · exact logup_finalCheck_soundness oSpec F n M params init impl
+      (outerVerifier oSpec F n M params) (sumcheckVerifier oSpec F n M params)
+      (logup_outer_soundness oSpec F n M params init impl hcard)
+      (logup_sumcheck_soundness oSpec F n M params init impl sumcheckSoundnessError
+        hSumcheckSoundness))
+    (logup_finalCheck_soundness oSpec F n M params init impl)
 
 end Soundness
 

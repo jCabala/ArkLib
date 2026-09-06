@@ -81,7 +81,7 @@ theorem logupSumcheckRelationInput_iff
       logupOuterSumcheckClaim F n M params stmt oStmt = 0 := by
   unfold logupSumcheckRelationInput Sumcheck.Spec.relationRound
   simp only [Fin.coe_ofNat_eq_mod, Nat.zero_mod, Nat.sub_zero, logupInitialSumcheckStatement,
-    Set.mem_setOf_eq, Fin.elim0_append, logupSumcheckOracleStmt]
+    Set.mem_ofPred_eq, Fin.elim0_append, logupSumcheckOracleStmt]
   change
     (∑ x ∈ Fintype.piFinset fun _ : Fin n => Finset.univ.map (booleanDomain F),
       MvPolynomial.eval ((x ∘ Fin.cast (by omega)) ∘ Fin.cast (by omega))

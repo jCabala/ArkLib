@@ -148,7 +148,7 @@ theorem relationRound_last_iff
       MvPolynomial.eval (fun i : Fin n => stmt.challenges i) (polyOracle ()).val =
         stmt.target := by
   unfold relationRound
-  simp only [Set.mem_setOf_eq]
+  simp only [Set.mem_ofPred_eq]
   have htail : n - (Fin.last n : Fin (n + 1)) = 0 := by simp
   let tail0 : Fin (n - (Fin.last n : Fin (n + 1))) → R :=
     fun i => Fin.elim0 (Fin.cast htail i)
@@ -941,6 +941,16 @@ theorem oStmtExecutableLens_toLens (i : Fin n) :
     (oStmtExecutableLens R n deg D i).toLens = oStmtLens R n deg D i := by
   rfl
 
+@[simp]
+def oCtxExecutableLens (i : Fin n) : OracleContext.ExecutableLens
+    (StatementRound R n i.castSucc) (StatementRound R n i.succ)
+    (Simple.StmtIn R) (Simple.StmtOut R)
+    (OracleStatement R n deg) (OracleStatement R n deg)
+    (Simple.OStmtIn R deg) (Simple.OStmtOut R deg)
+    Unit Unit Unit Unit where
+  wit := Witness.Lens.trivial
+  stmt := oStmtExecutableLens R n deg D i
+
 /-- The lifted round exposes the original multivariate oracle.  It is written
 as a virtual identity oracle so the same query semantics survives every
 adapter and sequential composition path. -/
@@ -961,22 +971,12 @@ def liftOutputSimulation {ι : Type} (oSpec : OracleSpec ι) :
 
 def liftContextOutput {ι : Type} (oSpec : OracleSpec ι)
     [DecidableEq R] [SampleableType R] (i : Fin n) :
-    OracleVerifier.LiftContextOutput (oStmtExecutableLens R n deg D i)
-      (Simple.oracleVerifier R deg D oSpec) where
+    OracleVerifier.LiftContextOutput (oCtxExecutableLens R n deg D i).stmt
+      (Simple.oracleReduction R deg D oSpec).verifier where
   outputOracle := .inr (liftOutputSimulation R n deg oSpec)
   materialize_eq := by
     intro outerStmt challenges outerOStmt messages
     rfl
-
-@[simp]
-def oCtxExecutableLens (i : Fin n) : OracleContext.ExecutableLens
-    (StatementRound R n i.castSucc) (StatementRound R n i.succ)
-    (Simple.StmtIn R) (Simple.StmtOut R)
-    (OracleStatement R n deg) (OracleStatement R n deg)
-    (Simple.OStmtIn R deg) (Simple.OStmtOut R deg)
-    Unit Unit Unit Unit where
-  wit := Witness.Lens.trivial
-  stmt := oStmtExecutableLens R n deg D i
 
 @[simp]
 def oCtxLens (i : Fin n) : OracleContext.Lens
@@ -1035,7 +1035,6 @@ lemma oracleReduction_verifier_eq_verifier {i : Fin n} :
     (oracleReduction R n deg D oSpec i).verifier = oracleVerifier R n deg D oSpec i := by
   rfl
 
-omit [SampleableType R] in
 /-- One Sumcheck round preserves the oracle statement on prover-supported outputs. -/
 theorem prover_preserves_oracleStmt
     {i : Fin n}

@@ -72,7 +72,7 @@ theorem outer_batch_coefficients_nontrivial_of_good_xz
           (domainIdentityMLE (F := F) (n := n) (M := M) groups table columns multiplicity
             helpers xChallenge k) ≠ 0 := by
   classical
-  letI : DecidableEq F := Classical.decEq F
+  let _ : DecidableEq F := Classical.decEq F
   let c0 : F := ∑ u : Fin n → Fin 2, ∑ k : Fin K, helpers k u
   by_cases hhelper : c0 = 0
   · right
@@ -132,7 +132,7 @@ theorem outer_linear_claim_ne_zero_of_good_challenges
               (domainIdentityMLE (F := F) (n := n) (M := M) groups table columns multiplicity
                 helpers xChallenge k) ≠ 0 := by
   classical
-  letI : DecidableEq F := Classical.decEq F
+  let _ : DecidableEq F := Classical.decEq F
   exact hBatchGood
     (outer_batch_coefficients_nontrivial_of_good_xz
       (F := F) (n := n) (M := M) groups hgroups table columns multiplicity helpers
@@ -456,8 +456,9 @@ noncomputable def logupQPolynomial (groups : Fin K → Finset (TermIdx M))
 /-- `logupQPolynomial` has the individual-degree bound required by the embedded sumcheck.
 
 If every oracle polynomial is multilinear, then the generic batched-polynomial degree bound applies
-with `T = M + 1`, giving individual degree at most `M + 3`. -/
+with the maximum group cardinality `L`, giving individual degree at most `L + 2`. -/
 theorem logupQPolynomial_degreeOf (groups : Fin K → Finset (TermIdx M))
+    {L : ℕ} (hgroups : ∀ k, (groups k).card ≤ L)
     {table : MvPolynomial (Fin n) F} {columns : Fin M → MvPolynomial (Fin n) F}
     {multiplicity : MvPolynomial (Fin n) F} {helpers : Fin K → MvPolynomial (Fin n) F}
     (htable : ∀ v, MvPolynomial.degreeOf v table ≤ 1)
@@ -467,10 +468,10 @@ theorem logupQPolynomial_degreeOf (groups : Fin K → Finset (TermIdx M))
     (xChallenge : F) (zChallenge : Fin n → F) (batchingScalars : Fin K → F) (i : Fin n) :
     MvPolynomial.degreeOf i
         (logupQPolynomial groups table columns multiplicity helpers
-          xChallenge zChallenge batchingScalars) ≤ M + 3 := by
+          xChallenge zChallenge batchingScalars) ≤ L + 2 := by
   refine le_trans (batchedSumcheckPolynomial_degreeOf groups
     (termPhiPolynomial table columns xChallenge) (termNumeratorPolynomial multiplicity)
-    helpers zChallenge batchingScalars
+    helpers hgroups zChallenge batchingScalars
     (fun j v => termPhiPolynomial_degreeOf htable hcolumns xChallenge j v)
     (fun j v => termNumeratorPolynomial_degreeOf hmult j v)
     hhelper i) (by omega)

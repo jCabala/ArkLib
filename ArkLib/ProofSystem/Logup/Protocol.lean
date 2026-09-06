@@ -154,6 +154,46 @@ def group {M : ℕ} (params : ProtocolParams M) (k : Fin params.numGroups) :
   Finset.univ.filter fun i : TermIdx M =>
     k.val * params.sumSize ≤ i.val ∧ i.val < (k.val + 1) * params.sumSize
 
+/-- Every partial-sum group contains at most `sumSize` terms. -/
+theorem group_card_le_sumSize {M : ℕ} (params : ProtocolParams M)
+    (k : Fin params.numGroups) :
+    (params.group k).card ≤ params.sumSize := by
+  classical
+  let offset : TermIdx M → Fin params.sumSize := fun i =>
+    if hi : i ∈ params.group k then
+      ⟨i.val - k.val * params.sumSize, by
+        have hi' : k.val * params.sumSize ≤ i.val ∧
+            i.val < (k.val + 1) * params.sumSize := by
+          simpa only [group, Finset.mem_filter, Finset.mem_univ, true_and] using hi
+        rw [Nat.add_mul, one_mul] at hi'
+        omega⟩
+    else
+      ⟨0, params.sumSize_pos⟩
+  have hmaps : Set.MapsTo offset (↑(params.group k) : Set (TermIdx M))
+      (↑(Finset.univ : Finset (Fin params.sumSize)) : Set (Fin params.sumSize)) := by
+    intro i _
+    exact Finset.mem_univ (offset i)
+  have hinj : Set.InjOn offset (↑(params.group k) : Set (TermIdx M)) := by
+    intro a ha b hb hab
+    have haMem : a ∈ params.group k := ha
+    have hbMem : b ∈ params.group k := hb
+    have ha' : k.val * params.sumSize ≤ a.val ∧
+        a.val < (k.val + 1) * params.sumSize := by
+      simpa only [group, Finset.mem_filter, Finset.mem_univ, true_and] using haMem
+    have hb' : k.val * params.sumSize ≤ b.val ∧
+        b.val < (k.val + 1) * params.sumSize := by
+      simpa only [group, Finset.mem_filter, Finset.mem_univ, true_and] using hbMem
+    have hoffset : a.val - k.val * params.sumSize =
+        b.val - k.val * params.sumSize := by
+      rw [← show (offset a).val = a.val - k.val * params.sumSize by
+        simp only [offset, dif_pos haMem]]
+      rw [← show (offset b).val = b.val - k.val * params.sumSize by
+        simp only [offset, dif_pos hbMem]]
+      exact congrArg Fin.val hab
+    apply Fin.ext
+    omega
+  simpa using Finset.card_le_card_of_injOn offset hmaps hinj
+
 end ProtocolParams
 
 /-- Input oracle statements: the table `t` and lookup columns `fᵢ`, as multilinear polynomials
@@ -386,22 +426,27 @@ noncomputable def outerVerifier :
       challenges (outerChallengeBatchIdx F n M params)
     pure { xChallenge := x, zChallenge := batch.1, batchingScalars := batch.2 }
 
-  embed :=
-    { toFun := fun
-        | .input i => .inl i
-        | .multiplicity => .inr (outerMultiplicityMessageIdx F n M params)
-        | .helpers => .inr (outerHelpersMessageIdx F n M params)
-      inj' := by
-        intro a b h
-        cases a with grind
-    }
-
-  hEq := by
-    intro i
-    cases i with
-    | input j => rfl
-    | multiplicity => rfl
-    | helpers => rfl
+  outputOracle := .inl {
+    embed :=
+      { toFun := fun
+          | .input i => .inl i
+          | .multiplicity => .inr (outerMultiplicityMessageIdx F n M params)
+          | .helpers => .inr (outerHelpersMessageIdx F n M params)
+        inj' := by
+          intro a b h
+          cases a with grind }
+    hEq := by
+      intro i
+      cases i with
+      | input j => rfl
+      | multiplicity => rfl
+      | helpers => rfl
+    outputInterface_heq := by
+      intro i
+      cases i with
+      | input j => rfl
+      | multiplicity => rfl
+      | helpers => rfl }
 
 variable {ι : Type} (oSpec : OracleSpec ι)
 variable (F : Type) [Field F] [Fintype F] [DecidableEq F] (n M : ℕ)
@@ -429,9 +474,10 @@ section Phase2
 variable (F : Type) [Field F] [Fintype F] [DecidableEq F] (n M : ℕ)
 variable (params : ProtocolParams M)
 
-/-- Individual-degree bound for LogUp's embedded sumcheck polynomial. -/
-def logupSumcheckDegree (_params : ProtocolParams M) : ℕ :=
-  M + 3
+/-- Individual-degree bound `ℓ + 2` for LogUp's embedded sumcheck polynomial, where `ℓ` is
+the maximum partial-sum group size. -/
+def logupSumcheckDegree (params : ProtocolParams M) : ℕ :=
+  params.sumSize + 2
 
 /-- LogUp state after the embedded sumcheck, before the final oracle-query check. -/
 structure StmtAfterSumcheck where
@@ -457,7 +503,7 @@ noncomputable def logupSumcheckPolynomial
       (fun k => (oStmt .helpers k).1) stmt.xChallenge stmt.zChallenge stmt.batchingScalars, ?_⟩
   rw [MvPolynomial.mem_restrictDegree_iff_degreeOf_le]
   intro i
-  exact logupQPolynomial_degreeOf (params.group)
+  exact logupQPolynomial_degreeOf (params.group) params.group_card_le_sumSize
     ((MvPolynomial.mem_restrictDegree_iff_degreeOf_le _ _).mp (oStmt (.input .table)).2)
     (fun j => (MvPolynomial.mem_restrictDegree_iff_degreeOf_le _ _).mp
     (oStmt (.input (.column j))).2) ((MvPolynomial.mem_restrictDegree_iff_degreeOf_le _ _).mp
@@ -524,7 +570,152 @@ variable {ι : Type} (oSpec : OracleSpec ι)
 variable (F : Type) [Field F] [Fintype F] [DecidableEq F] (n M : ℕ)
 variable (params : ProtocolParams M)
 
-/-- Context lens from LogUp's retained outer state to ArkLib's generic Sumcheck state.
+/-- Route one query to a retained LogUp oracle. -/
+noncomputable def logupRetainedOracleQuery (i : OuterOracleIdx M)
+    (q : (instOStmtAfterOuterOracleInterface
+      (F := F) (n := n) (params := params) i).Query) :
+    OracleComp [OStmtAfterOuter F n M params]ₒ
+      ((instOStmtAfterOuterOracleInterface
+        (F := F) (n := n) (params := params) i).Response q) :=
+  OracleSpec.query
+    (show [OStmtAfterOuter F n M params]ₒ.Domain from ⟨i, q⟩)
+
+/-- Typed query to the retained multiplicity polynomial. -/
+noncomputable def logupMultiplicityQuery (r : Fin n → F) :
+    OracleComp [OStmtAfterOuter F n M params]ₒ F :=
+  logupRetainedOracleQuery F n M params .multiplicity r
+
+/-- Typed query to the retained table polynomial. -/
+noncomputable def logupTableQuery (r : Fin n → F) :
+    OracleComp [OStmtAfterOuter F n M params]ₒ F :=
+  logupRetainedOracleQuery F n M params (.input .table) r
+
+/-- Typed query to one retained lookup-column polynomial. -/
+noncomputable def logupColumnQuery (i : Fin M) (r : Fin n → F) :
+    OracleComp [OStmtAfterOuter F n M params]ₒ F :=
+  logupRetainedOracleQuery F n M params (.input (.column i)) r
+
+/-- Typed query to one retained helper polynomial. -/
+noncomputable def logupHelperQuery (k : Fin params.numGroups) (r : Fin n → F) :
+    OracleComp [OStmtAfterOuter F n M params]ₒ F :=
+  logupRetainedOracleQuery F n M params .helpers ⟨k, r⟩
+
+/-- Query the retained LogUp oracles and evaluate the derived sumcheck polynomial at one point. -/
+noncomputable def logupSumcheckQuery :
+    StmtAfterOuter F n M params →
+    QueryImpl [Sumcheck.Spec.OracleStatement F n (logupSumcheckDegree M params)]ₒ
+      (OracleComp [OStmtAfterOuter F n M params]ₒ) := fun stmt q => by
+  rcases q with ⟨u, r⟩
+  rcases u with ⟨⟩
+  change (Fin n → F) at r
+  exact do
+    let multiplicity ← logupMultiplicityQuery F n M params r
+    let table ← logupTableQuery F n M params r
+    let columnValues : Vector F M ← (Vector.finRange M).mapM fun i =>
+      logupColumnQuery F n M params i r
+    let helperValues : Vector F params.numGroups ←
+      (Vector.finRange params.numGroups).mapM fun k =>
+        logupHelperQuery F n M params k r
+    pure <| qAtPoint (F := F) (params.group) stmt.xChallenge stmt.zChallenge r
+      stmt.batchingScalars multiplicity table (fun i => columnValues[i])
+        (fun k => helperValues[k])
+
+private lemma simulateQ_vector_mapM_pure
+    {ι' : Type} {spec : OracleSpec ι'} {r : Type u → Type*} [Monad r] [LawfulMonad r]
+    {α β : Type u} {k : ℕ} (impl : QueryImpl spec r)
+    (f : α → OracleComp spec β) (g : α → β) (xs : Vector α k)
+    (hfg : ∀ x, simulateQ impl (f x) = pure (g x)) :
+    simulateQ impl (xs.mapM f) = pure (xs.map g) := by
+  have h_vl :
+      Vector.toArray <$> xs.mapM f = List.toArray <$> xs.toList.mapM f :=
+    (Vector.toArray_mapM (xs := xs) (f := f)).trans Array.mapM_eq_mapM_toList
+  have h_sim := congrArg (simulateQ impl) h_vl
+  rw [simulateQ_map, simulateQ_map, simulateQ_list_mapM] at h_sim
+  simp_rw [hfg] at h_sim
+  simp only [List.mapM_pure, map_pure, ← Vector.toList_map,
+    Vector.toArray_toList] at h_sim
+  apply (map_inj_right (fun h => Vector.toArray_inj.mp h)).mp
+  simpa only [map_pure] using h_sim
+
+/-- Query-executable statement lens from LogUp's retained outer state to generic Sumcheck. -/
+noncomputable def logupSumcheckExecutableStatementLens :
+    OracleStatement.ExecutableLens
+      (StmtAfterOuter F n M params) (StmtAfterSumcheck F n M params)
+      ((Sumcheck.Spec.StatementRound F n 0)) ((Sumcheck.Spec.StatementRound F n (.last n)))
+      (OStmtAfterOuter F n M params) (OStmtAfterOuter F n M params)
+      (Sumcheck.Spec.OracleStatement F n (logupSumcheckDegree M params))
+      (Sumcheck.Spec.OracleStatement F n (logupSumcheckDegree M params)) where
+  projStmt := fun _ => logupInitialSumcheckStatement F n
+  materializeInput := logupSumcheckOracleStmt F n M params
+  simulateInput := logupSumcheckQuery F n M params
+  simulateInput_eq := by
+    intro stmt oStmt q
+    rcases q with ⟨u, r⟩
+    rcases u with ⟨⟩
+    change (Fin n → F) at r
+    let impl := OracleInterface.simOracle0 (OStmtAfterOuter F n M params) oStmt
+    change simulateQ impl (logupSumcheckQuery F n M params stmt ⟨(), r⟩) =
+      MvPolynomial.eval r (logupSumcheckPolynomial F n M params stmt oStmt).1
+    simp only [logupSumcheckQuery, id_eq, simulateQ_bind]
+    have hmult : simulateQ impl (logupMultiplicityQuery F n M params r) =
+        pure (MvPolynomial.eval r (oStmt .multiplicity).1) := rfl
+    rw [hmult]
+    simp only [pure_bind]
+    have htable : simulateQ impl (logupTableQuery F n M params r) =
+        pure (MvPolynomial.eval r (oStmt (.input .table)).1) := rfl
+    rw [htable]
+    simp only [pure_bind]
+    have hcols := simulateQ_vector_mapM_pure impl
+      (fun i : Fin M => logupColumnQuery F n M params i r)
+      (fun i => MvPolynomial.eval r (oStmt (.input (.column i))).1)
+      (Vector.finRange M) (by intro i; rfl)
+    rw [hcols]
+    simp only [pure_bind]
+    have hhelpers := simulateQ_vector_mapM_pure impl
+      (fun k : Fin params.numGroups => logupHelperQuery F n M params k r)
+      (fun k => MvPolynomial.eval r (oStmt .helpers k).1)
+      (Vector.finRange params.numGroups) (by intro k; rfl)
+    rw [hhelpers]
+    change qAtPoint (params.group) stmt.xChallenge stmt.zChallenge r stmt.batchingScalars
+        (MvPolynomial.eval r (oStmt .multiplicity).1)
+        (MvPolynomial.eval r (oStmt (.input .table)).1)
+        (fun i => (Vector.map
+          (fun j => MvPolynomial.eval r (oStmt (.input (.column j))).1)
+          (Vector.finRange M))[i])
+        (fun k => (Vector.map
+          (fun j => MvPolynomial.eval r (oStmt .helpers j).1)
+          (Vector.finRange params.numGroups))[k]) =
+      MvPolynomial.eval r (logupSumcheckPolynomial F n M params stmt oStmt).1
+    simpa [Vector.finRange, logupSumcheckPolynomial] using
+      (logupQPolynomial_eval_point (params.group) (oStmt (.input .table)).1
+      (fun i => (oStmt (.input (.column i))).1) (oStmt .multiplicity).1
+      (fun k => (oStmt .helpers k).1) stmt.xChallenge stmt.zChallenge r
+      stmt.batchingScalars).symm
+  liftStmt := fun stmt inner => { outer := stmt, finalClaim := inner }
+  materializeOutput := fun outerOStmt _ => outerOStmt
+  simulateOutput := fun q => liftM <| OracleSpec.query
+    (show ([OStmtAfterOuter F n M params]ₒ +
+      [Sumcheck.Spec.OracleStatement F n (logupSumcheckDegree M params)]ₒ).Domain
+      from Sum.inl q)
+  simulateOutput_eq := by
+    intro outerOStmt innerOStmt q
+    rcases q with ⟨i, query⟩
+    simp only [simulateQ_query, OracleQuery.input_query, OracleQuery.cont_query]
+    rfl
+
+/-- Executable context lens used to lift generic Sumcheck into LogUp. -/
+noncomputable def logupSumcheckExecutableContextLens :
+    OracleContext.ExecutableLens
+      (StmtAfterOuter F n M params) (StmtAfterSumcheck F n M params)
+      ((Sumcheck.Spec.StatementRound F n 0)) ((Sumcheck.Spec.StatementRound F n (.last n)))
+      (OStmtAfterOuter F n M params) (OStmtAfterOuter F n M params)
+      (Sumcheck.Spec.OracleStatement F n (logupSumcheckDegree M params))
+      (Sumcheck.Spec.OracleStatement F n (logupSumcheckDegree M params))
+      Unit Unit Unit Unit where
+  stmt := logupSumcheckExecutableStatementLens F n M params
+  wit := Witness.Lens.trivial
+
+/-- Extensional view of the LogUp-to-Sumcheck context lens, used by security relations.
 
 The projection builds the generic zero-sum claim and its single polynomial oracle. The lift keeps
 the outer LogUp data and retained oracles together with Sumcheck's final point claim, so the next
@@ -537,16 +728,8 @@ noncomputable def logupSumcheckContextLens :
       (OStmtAfterOuter F n M params) (OStmtAfterOuter F n M params)
       (Sumcheck.Spec.OracleStatement F n (logupSumcheckDegree M params))
       (Sumcheck.Spec.OracleStatement F n (logupSumcheckDegree M params))
-      Unit Unit Unit Unit where
-  stmt :=
-    ⟨fun ctx =>
-        (logupInitialSumcheckStatement F n,
-          logupSumcheckOracleStmt F n M params ctx.1 ctx.2),
-      fun ctx inner =>
-        ({ outer := ctx.1, finalClaim := inner.1 }, ctx.2)⟩
-  wit :=
-    ⟨fun _ => (),
-      fun _ _ => ()⟩
+      Unit Unit Unit Unit :=
+  (logupSumcheckExecutableContextLens F n M params).toLens
 
 variable {ι : Type} (oSpec : OracleSpec ι)
 variable (F : Type) [Field F] [Fintype F] [DecidableEq F] (n M : ℕ)
@@ -562,6 +745,29 @@ noncomputable def logupConcreteSumcheckOracleReduction [SampleableType F] :
   Sumcheck.Spec.oracleReduction F (logupSumcheckDegree M params)
     (booleanDomain F) n oSpec
 
+/-- The lifted sumcheck phase preserves every retained LogUp input oracle. -/
+noncomputable def logupSumcheckLiftContextOutput [SampleableType F] :
+    OracleVerifier.LiftContextOutput
+      (logupSumcheckExecutableContextLens F n M params).stmt
+      (logupConcreteSumcheckOracleReduction oSpec F n M params).verifier where
+  outputOracle := .inl {
+    embed :=
+      { toFun := fun i => Sum.inl i
+        inj' := by
+          intro a b h
+          exact Sum.inl.inj h }
+    hEq := fun _ => rfl
+    outputInterface_heq := by
+      intro i
+      change HEq (instOStmtAfterOuterOracleInterface
+        (F := F) (n := n) (params := params) i)
+        (instOStmtAfterOuterOracleInterface (F := F) (n := n) (params := params) i)
+      rfl }
+  materialize_eq := by
+    intro outerStmt challenges outerOStmt messages
+    funext i
+    rfl
+
 variable {ι : Type} (oSpec : OracleSpec ι)
 variable (F : Type) [Field F] [Fintype F] [DecidableEq F] [SampleableType F] (n M : ℕ)
 variable (params : ProtocolParams M)
@@ -572,7 +778,7 @@ noncomputable def sumcheckProver :
       (StmtAfterSumcheck F n M params) (OStmtAfterOuter F n M params) Unit
       ((Sumcheck.Spec.pSpec F (logupSumcheckDegree M params) n)) :=
   (logupConcreteSumcheckOracleReduction oSpec F n M params).prover.liftContext
-    (logupSumcheckContextLens F n M params)
+    (logupSumcheckExecutableContextLens F n M params)
 
 variable {ι : Type} (oSpec : OracleSpec ι)
 variable (F : Type) [Field F] [Fintype F] [DecidableEq F] (n M : ℕ)
@@ -584,7 +790,8 @@ noncomputable def sumcheckVerifier [SampleableType F] :
       (StmtAfterSumcheck F n M params) (OStmtAfterOuter F n M params)
       ((Sumcheck.Spec.pSpec F (logupSumcheckDegree M params) n)) :=
   (logupConcreteSumcheckOracleReduction oSpec F n M params).verifier.liftContext
-    (logupSumcheckContextLens F n M params).stmt
+    (logupSumcheckExecutableContextLens F n M params).stmt
+    (logupSumcheckLiftContextOutput oSpec F n M params)
 
 variable {ι : Type} (oSpec : OracleSpec ι)
 variable (F : Type) [Field F] [Fintype F] [DecidableEq F] [SampleableType F] (n M : ℕ)
@@ -599,7 +806,8 @@ noncomputable def sumcheckOracleReduction :
       (StmtAfterSumcheck F n M params) (OStmtAfterOuter F n M params) Unit
       ((Sumcheck.Spec.pSpec F (logupSumcheckDegree M params) n)) :=
   (logupConcreteSumcheckOracleReduction oSpec F n M params).liftContext
-    (logupSumcheckContextLens F n M params)
+    (logupSumcheckExecutableContextLens F n M params)
+    (logupSumcheckLiftContextOutput oSpec F n M params)
 
 end Phase2
 
@@ -692,11 +900,12 @@ noncomputable def finalCheckVerifier :
       (fun k => helperValues[k]) = expectedValue)
     pure ()
 
-  embed :=
-    { toFun := fun i => Fin.elim0 i
-      inj' := fun i => Fin.elim0 i }
-
-  hEq := fun i => Fin.elim0 i
+  outputOracle := .inl {
+    embed :=
+      { toFun := fun i => Fin.elim0 i
+        inj' := fun i => Fin.elim0 i }
+    hEq := fun i => Fin.elim0 i
+    outputInterface_heq := fun i => Fin.elim0 i }
 
 variable {ι : Type} (oSpec : OracleSpec ι)
 variable (F : Type) [Field F] [Fintype F] [DecidableEq F] (n M : ℕ)
